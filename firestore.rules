@@ -1,0 +1,103 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function onlyKeys(keys) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys);
+    }
+    function validName(n) { return n is string && n.size() > 0 && n.size() <= 30; }
+    function myFriends() {
+      return get(/databases/$(database)/documents/friendLists/$(request.auth.uid)).data.friends;
+    }
+    function inAudience(postId) {
+      return request.auth.uid in get(/databases/$(database)/documents/posts/$(postId)).data.audience;
+    }
+    // اللايك: المستخدم يضيف أو يشيل uid بتاعه هو بس
+    function ownLikeChange() {
+      let before = resource.data.likes.toSet();
+      let after = request.resource.data.likes.toSet();
+      return after.difference(before).hasOnly([request.auth.uid])
+          && before.difference(after).hasOnly([request.auth.uid]);
+    }
+
+    // بيانات عامة للمستخدم (للبحث بالاسم)
+    match /users/{uid} {
+      allow read: if signedIn();
+      allow create: if signedIn() && uid == request.auth.uid
+        && request.resource.data.username == request.auth.token.email.split('@')[0]
+        && validName(request.resource.data.displayName);
+      allow update: if signedIn() && uid == request.auth.uid
+        && request.resource.data.username == resource.data.username
+        && validName(request.resource.data.displayName);
+    }
+
+    // قائمة أصدقائي: خاصة، أنا بس اللي أشوفها
+    match /friendLists/{uid} {
+      allow read: if signedIn() && uid == request.auth.uid;
+      allow create, update: if signedIn() && uid == request.auth.uid
+        && request.resource.data.keys().hasOnly(['friends'])
+        && request.resource.data.friends is list
+        && request.resource.data.friends.size() <= 100;
+    }
+
+    // طلبات الصداقة (رقم الطلب = المرسل_المستقبل)
+    match /requests/{requestId} {
+      allow read: if signedIn()
+        && (resource.data.from == request.auth.uid || resource.data.to == request.auth.uid);
+      allow create: if signedIn()
+        && requestId == request.auth.uid + '_' + request.resource.data.to
+        && request.resource.data.from == request.auth.uid
+        && request.resource.data.to is string
+        && request.resource.data.to != request.auth.uid
+        && request.resource.data.status == 'pending'
+        && validName(request.resource.data.fromName)
+        && validName(request.resource.data.toName);
+      allow update: if signedIn() && resource.data.to == request.auth.uid
+        && onlyKeys(['status'])
+        && request.resource.data.status == 'accepted';
+      allow delete: if signedIn()
+        && (resource.data.from == request.auth.uid || resource.data.to == request.auth.uid);
+    }
+
+    // البوستات: يقرأها بس اللي في الـ audience (صاحب البوست + أصدقاؤه وقت النشر)
+    match /posts/{postId} {
+      allow read: if signedIn() && request.auth.uid in resource.data.audience;
+
+      allow create: if signedIn()
+        && request.resource.data.uid == request.auth.uid
+        && validName(request.resource.data.author)
+        && request.resource.data.text is string
+        && request.resource.data.text.size() > 0
+        && request.resource.data.text.size() <= 280
+        && request.resource.data.likes == []
+        && request.resource.data.commentCount == 0
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.audience is list
+        && request.resource.data.audience.size() <= 101
+        && request.resource.data.audience.hasAll([request.auth.uid])
+        && request.resource.data.audience.hasOnly(myFriends().concat([request.auth.uid]));
+
+      allow update: if signedIn() && request.auth.uid in resource.data.audience && (
+        (onlyKeys(['likes']) && ownLikeChange()) ||
+        (onlyKeys(['commentCount'])
+          && request.resource.data.commentCount in
+             [resource.data.commentCount + 1, resource.data.commentCount - 1])
+      );
+
+      allow delete: if signedIn() && resource.data.uid == request.auth.uid;
+
+      match /comments/{commentId} {
+        allow read: if signedIn() && inAudience(postId);
+        allow create: if signedIn() && inAudience(postId)
+          && request.resource.data.uid == request.auth.uid
+          && validName(request.resource.data.author)
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0
+          && request.resource.data.text.size() <= 140
+          && request.resource.data.createdAt == request.time;
+        allow delete: if signedIn() && resource.data.uid == request.auth.uid;
+      }
+    }
+  }
+}

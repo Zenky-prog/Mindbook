@@ -1,0 +1,70 @@
+export const LOGO = `<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="mbhead" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3b32c9"/><stop offset="1" stop-color="#9333ea"/></linearGradient>
+    <linearGradient id="mbray" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fbbf24"/><stop offset="1" stop-color="#f97316"/></linearGradient>
+    <filter id="mbglow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="1.1" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <style>
+      .mb-spark{fill:none;stroke:#fde68a;stroke-width:1.5;stroke-linecap:round;stroke-dasharray:2 8;stroke-dashoffset:10;animation:mbflow 2.4s linear infinite}
+      .mb-node{fill:#fff7d6;animation:mbpulse 2.4s ease-in-out infinite;transform-box:fill-box;transform-origin:center}
+      .mb-ray{animation:mbray 2.4s ease-in-out infinite}
+      @keyframes mbflow{0%{stroke-dashoffset:10;opacity:1}85%{stroke-dashoffset:0;opacity:1}100%{stroke-dashoffset:0;opacity:0}}
+      @keyframes mbpulse{0%,100%{opacity:.55;transform:scale(.8)}30%{opacity:1;transform:scale(1.35)}}
+      @keyframes mbray{0%,100%{opacity:.55}50%{opacity:1}}
+      @media (prefers-reduced-motion:reduce){.mb-spark,.mb-node,.mb-ray{animation:none}.mb-spark{stroke-dashoffset:0}}
+    </style>
+  </defs>
+  <g stroke="url(#mbray)" stroke-width="3" stroke-linecap="round" fill="none">
+    <line class="mb-ray" x1="32" y1="18" x2="32" y2="8"/>
+    <line class="mb-ray" x1="32" y1="18" x2="32" y2="12" transform="rotate(-30 32 36)"/>
+    <line class="mb-ray" x1="32" y1="18" x2="32" y2="12" transform="rotate(30 32 36)"/>
+    <line class="mb-ray" x1="32" y1="18" x2="32" y2="9" transform="rotate(-60 32 36)"/>
+    <line class="mb-ray" x1="32" y1="18" x2="32" y2="9" transform="rotate(60 32 36)"/>
+    <line class="mb-ray" x1="32" y1="18" x2="32" y2="12" transform="rotate(-90 32 36)"/>
+    <line class="mb-ray" x1="32" y1="18" x2="32" y2="12" transform="rotate(90 32 36)"/>
+  </g>
+  <path d="M24 58C24 52 16 49 16 37C16 28 23 21 32 21C41 21 48 28 48 37L50 42L47.5 43C47.5 49 44 52 40 52L40 58Z" fill="url(#mbhead)"/>
+  <g stroke="#c4b5fd" stroke-width="0.8" stroke-opacity="0.55" fill="none" stroke-linecap="round">
+    <line x1="26" y1="30" x2="34" y2="27"/>
+    <line x1="34" y1="27" x2="41" y2="32"/>
+    <line x1="26" y1="30" x2="23" y2="38"/>
+    <line x1="26" y1="30" x2="31" y2="36"/>
+    <line x1="34" y1="27" x2="31" y2="36"/>
+    <line x1="41" y1="32" x2="39" y2="39"/>
+    <line x1="23" y1="38" x2="31" y2="36"/>
+    <line x1="31" y1="36" x2="39" y2="39"/>
+    <line x1="23" y1="38" x2="27" y2="45"/>
+    <line x1="31" y1="36" x2="35" y2="44"/>
+    <line x1="39" y1="39" x2="35" y2="44"/>
+    <line x1="27" y1="45" x2="35" y2="44"/>
+    <line x1="35" y1="44" x2="43" y2="44"/>
+    <line x1="39" y1="39" x2="43" y2="44"/>
+  </g>
+  <g filter="url(#mbglow)">
+    <line class="mb-spark" style="animation-delay:0.0s" pathLength="10" x1="26" y1="30" x2="34" y2="27"/>
+    <line class="mb-spark" style="animation-delay:0.4s" pathLength="10" x1="34" y1="27" x2="41" y2="32"/>
+    <line class="mb-spark" style="animation-delay:0.1s" pathLength="10" x1="26" y1="30" x2="23" y2="38"/>
+    <line class="mb-spark" style="animation-delay:0.1s" pathLength="10" x1="26" y1="30" x2="31" y2="36"/>
+    <line class="mb-spark" style="animation-delay:0.4s" pathLength="10" x1="34" y1="27" x2="31" y2="36"/>
+    <line class="mb-spark" style="animation-delay:0.8s" pathLength="10" x1="41" y1="32" x2="39" y2="39"/>
+    <line class="mb-spark" style="animation-delay:0.5s" pathLength="10" x1="23" y1="38" x2="31" y2="36"/>
+    <line class="mb-spark" style="animation-delay:0.8s" pathLength="10" x1="31" y1="36" x2="39" y2="39"/>
+    <line class="mb-spark" style="animation-delay:0.9s" pathLength="10" x1="23" y1="38" x2="27" y2="45"/>
+    <line class="mb-spark" style="animation-delay:1.0s" pathLength="10" x1="31" y1="36" x2="35" y2="44"/>
+    <line class="mb-spark" style="animation-delay:1.2s" pathLength="10" x1="39" y1="39" x2="35" y2="44"/>
+    <line class="mb-spark" style="animation-delay:1.3s" pathLength="10" x1="27" y1="45" x2="35" y2="44"/>
+    <line class="mb-spark" style="animation-delay:1.5s" pathLength="10" x1="35" y1="44" x2="43" y2="44"/>
+    <line class="mb-spark" style="animation-delay:1.4s" pathLength="10" x1="39" y1="39" x2="43" y2="44"/>
+    <circle class="mb-node" style="animation-delay:0.0s" cx="26" cy="30" r="1.9"/>
+    <circle class="mb-node" style="animation-delay:0.4s" cx="34" cy="27" r="1.9"/>
+    <circle class="mb-node" style="animation-delay:0.8s" cx="41" cy="32" r="1.9"/>
+    <circle class="mb-node" style="animation-delay:0.1s" cx="23" cy="38" r="1.9"/>
+    <circle class="mb-node" style="animation-delay:0.5s" cx="31" cy="36" r="1.9"/>
+    <circle class="mb-node" style="animation-delay:0.9s" cx="39" cy="39" r="1.9"/>
+    <circle class="mb-node" style="animation-delay:1.0s" cx="27" cy="45" r="1.9"/>
+    <circle class="mb-node" style="animation-delay:1.2s" cx="35" cy="44" r="1.9"/>
+    <circle class="mb-node" style="animation-delay:1.5s" cx="43" cy="44" r="1.9"/>
+  </g>
+</svg>`;
