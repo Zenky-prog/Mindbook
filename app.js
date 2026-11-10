@@ -5,7 +5,7 @@ import {
   updateProfile, signOut,
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 import {
-  collection, query, where, orderBy, onSnapshot, addDoc, doc, getDoc, getDocs, setDoc,
+  collection, query, where, orderBy, limit, onSnapshot, addDoc, doc, getDoc, getDocs, setDoc,
   updateDoc, deleteDoc, serverTimestamp, arrayUnion, arrayRemove, increment, writeBatch,
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
@@ -20,6 +20,11 @@ let posts = [];
 let myFriends = [];
 let incoming = [];
 let outgoing = [];
+let chats = [];
+let activeChat = null;
+let msgs = [];
+let unsubThread = null;
+let seenBusy = false;
 const profiles = new Map();
 const adding = new Set();
 const openComments = new Set();
@@ -74,6 +79,7 @@ function teardown() {
   unsubs.forEach(u => u()); unsubs = [];
   commentUnsubs.forEach(u => u());
   commentUnsubs.clear(); commentsByPost.clear(); openComments.clear();
+  unsubThread?.(); unsubThread = null; activeChat = null; msgs = []; chats = [];
   posts = []; myFriends = []; incoming = []; outgoing = [];
   profiles.clear(); adding.clear();
   view = "feed";
@@ -175,6 +181,7 @@ async function showApp() {
     <nav class="tabs">
       <button class="tab on" data-view="feed">الرئيسية</button>
       <button class="tab" data-view="friends">الأصدقاء <span class="badge" id="badge" hidden></span></button>
+      <button class="tab" data-view="chats">الرسائل <span class="badge" id="chatBadge" hidden></span></button>
     </nav>
     <main id="main"></main>`;
 
@@ -182,6 +189,7 @@ async function showApp() {
 
   document.querySelectorAll(".tab").forEach(t => {
     t.onclick = () => {
+      closeThread();
       view = t.dataset.view;
       document.querySelectorAll(".tab").forEach(x => x.classList.toggle("on", x === t));
       renderMain();
@@ -190,16 +198,21 @@ async function showApp() {
 
   const main = document.getElementById("main");
   main.addEventListener("click", e => {
+    const o = e.target.closest("[data-open]");
+    if (o) return openThread(o.dataset.open);
     const b = e.target.closest("button");
     if (!b) return;
     if (b.dataset.act) onFeedClick(b);
     else if (b.dataset.fact) onFriendAction(b);
     else if (b.id === "addFriend") sendRequest(document.getElementById("friendName").value);
+    else if (b.id === "sendMsg") sendMessage();
+    else if (b.dataset.back !== undefined) closeThread(true);
   });
   main.addEventListener("keydown", e => {
     if (e.key !== "Enter") return;
     if (e.target.matches("input[data-draft]")) sendComment(e.target.closest(".card"));
     else if (e.target.id === "friendName") sendRequest(e.target.value);
+    else if (e.target.id === "msgInput") sendMessage();
   });
 
   startListeners();
@@ -227,6 +240,14 @@ function startListeners() {
     incoming = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     reconcile(); updateBadge();
     if (view === "friends") renderFriends();
+  }, fail));
+
+  // المحادثات اللي أنا طرف فيها
+  unsubs.push(onSnapshot(query(collection(db, "chats"), where("members", "array-contains", uid)), snap => {
+    chats = snap.docs.map(d => ({ id: d.id, ...d.data({ serverTimestamps: "estimate" }) }));
+    loadProfiles(chats.map(c => otherOf(c)));
+    updateChatBadge();
+    if (activeChat) markSeen(); else if (view === "chats") renderChats();
   }, fail));
 
   unsubs.push(onSnapshot(query(collection(db, "requests"), where("from", "==", uid)), snap => {
@@ -269,9 +290,11 @@ async function loadProfiles(uids) {
     } catch { profiles.set(u, { displayName: "مستخدم", username: "" }); }
   }));
   if (view === "friends") renderFriends();
+  else if (view === "chats") { if (activeChat) renderThreadHead(); else renderChats(); }
 }
 
 function renderMain() {
+  if (view === "chats") { renderChats(); return; }
   if (view === "friends") { renderFriends(); return; }
 
   document.getElementById("main").innerHTML = `
@@ -483,7 +506,8 @@ function renderFriends() {
       ${myFriends.length ? myFriends.map(f => {
         const p = profiles.get(f);
         return item(p?.displayName ?? "...", p?.username ?? "",
-          `<button class="ghost del" data-fact="unfriend" data-id="${esc(f)}">حذف</button>`);
+          `<button class="ghost" data-open="${esc(f)}" title="مراسلة">💬</button>
+           <button class="ghost del" data-fact="unfriend" data-id="${esc(f)}">حذف</button>`);
       }).join("") : `<div class="empty small">لسه معندكش أصدقاء. ابعت طلب باسم المستخدم.</div>`}
     </div>`;
 
@@ -548,6 +572,161 @@ async function onFriendAction(b) {
       }
     }
   } catch (err) {
+    toast(errMsg(err));
+  }
+}
+
+/* ---------- الرسائل ---------- */
+const chatIdFor = (a, b) => (a < b ? `${a}_${b}` : `${b}_${a}`);
+const otherOf = c => (c.members || []).find(m => m !== user.uid);
+const nameOf = uid => profiles.get(uid)?.displayName ?? "...";
+const tsOf = c => c.lastAt?.toMillis?.() ?? Date.now();
+const clock = ts => (ts?.toDate ? ts.toDate().toLocaleTimeString("ar-EG", { hour: "2-digit", minute: "2-digit" }) : "");
+
+function isUnread(c) {
+  if (!c.lastAt || c.lastFrom === user.uid) return false;
+  const seen = c["seen_" + user.uid];
+  return !seen || seen.toMillis() < c.lastAt.toMillis();
+}
+
+function updateChatBadge() {
+  const el = document.getElementById("chatBadge");
+  if (!el) return;
+  const n = chats.filter(isUnread).length;
+  el.textContent = n;
+  el.hidden = n === 0;
+}
+
+function renderChats() {
+  const main = document.getElementById("main");
+  if (!main || view !== "chats" || activeChat) return;
+
+  const convos = [...chats].sort((a, b) => tsOf(b) - tsOf(a));
+  const withChat = new Set(convos.map(otherOf));
+  const fresh = myFriends.filter(f => !withChat.has(f));
+
+  const convoRow = c => {
+    const o = otherOf(c), un = isUnread(c);
+    return `
+    <div class="item click" data-open="${esc(o)}">
+      ${avatar(nameOf(o))}
+      <div class="grow">
+        <div class="name">${esc(nameOf(o))}</div>
+        <div class="time preview ${un ? "unread" : ""}">${c.lastFrom === user.uid ? "إنت: " : ""}${esc(c.lastText)}</div>
+      </div>
+      ${un ? `<span class="dot"></span>` : ""}
+    </div>`;
+  };
+
+  main.innerHTML = `
+    ${convos.length ? `<div class="card"><h3>المحادثات</h3>${convos.map(convoRow).join("")}</div>` : ""}
+    ${fresh.length ? `<div class="card"><h3>ابدأ محادثة</h3>
+      ${fresh.map(f => `
+        <div class="item click" data-open="${esc(f)}">
+          ${avatar(nameOf(f))}
+          <div class="grow"><div class="name">${esc(nameOf(f))}</div></div>
+          <span class="time">💬</span>
+        </div>`).join("")}</div>` : ""}
+    ${!convos.length && !fresh.length ? `<div class="empty">ضيف أصدقاء من تبويب «الأصدقاء» الأول عشان تراسلهم.</div>` : ""}`;
+}
+
+function renderThreadHead() {
+  if (!activeChat) return;
+  const n = nameOf(activeChat.other);
+  const av = document.getElementById("threadAvatar");
+  if (av) av.innerHTML = avatar(n);
+  const nm = document.getElementById("threadName");
+  if (nm) nm.textContent = n;
+}
+
+function openThread(other) {
+  if (!other || !user) return;
+  closeThread();
+  view = "chats";
+  document.querySelectorAll(".tab").forEach(x => x.classList.toggle("on", x.dataset.view === "chats"));
+  const id = chatIdFor(user.uid, other);
+  activeChat = { id, other };
+  msgs = [];
+  loadProfiles([other]);
+
+  document.getElementById("main").innerHTML = `
+    <div class="card thread">
+      <div class="thread-head">
+        <button class="ghost" data-back title="رجوع">→</button>
+        <span id="threadAvatar"></span>
+        <div class="name" id="threadName"></div>
+      </div>
+      <div id="msgList" class="msglist"></div>
+      <div class="row">
+        <input type="text" id="msgInput" maxlength="1000" placeholder="اكتب رسالة..." autocomplete="off">
+        <button id="sendMsg">إرسال</button>
+      </div>
+    </div>`;
+  renderThreadHead();
+  renderMsgs();
+
+  unsubThread = onSnapshot(
+    query(collection(db, "chats", id, "messages"), orderBy("createdAt", "desc"), limit(100)),
+    snap => {
+      msgs = snap.docs.map(d => ({ id: d.id, ...d.data({ serverTimestamps: "estimate" }) })).reverse();
+      renderMsgs();
+      markSeen();
+    },
+    err => toast(errMsg(err)),
+  );
+  document.getElementById("msgInput")?.focus();
+}
+
+function closeThread(render = false) {
+  unsubThread?.(); unsubThread = null;
+  const had = !!activeChat;
+  activeChat = null; msgs = [];
+  if (render && had) renderChats();
+}
+
+function renderMsgs() {
+  const el = document.getElementById("msgList");
+  if (!el) return;
+  const nearBottom = !el.childElementCount || el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+  el.innerHTML = msgs.length
+    ? msgs.map(m => `<div class="bubble ${m.from === user.uid ? "me" : ""}">${esc(m.text)}<div class="t">${clock(m.createdAt)}</div></div>`).join("")
+    : `<div class="empty small">ابدأ المحادثة بأول رسالة 👋</div>`;
+  if (nearBottom) el.scrollTop = el.scrollHeight;
+}
+
+function markSeen() {
+  if (!activeChat || seenBusy) return;
+  const c = chats.find(x => x.id === activeChat.id);
+  if (!c || !isUnread(c)) return;
+  seenBusy = true;
+  updateDoc(doc(db, "chats", c.id), { ["seen_" + user.uid]: serverTimestamp() })
+    .catch(() => {})
+    .finally(() => { seenBusy = false; });
+}
+
+async function sendMessage() {
+  if (!activeChat) return;
+  const input = document.getElementById("msgInput");
+  const text = input?.value.trim();
+  if (!text) return;
+  if (!myFriends.includes(activeChat.other)) return toast("لازم تكونوا أصدقاء عشان تتراسلوا");
+  input.value = "";
+  const id = activeChat.id;
+  try {
+    const batch = writeBatch(db);
+    batch.set(doc(collection(db, "chats", id, "messages")), {
+      from: user.uid, text, createdAt: serverTimestamp(),
+    });
+    batch.set(doc(db, "chats", id), {
+      members: id.split("_"),
+      lastText: text.slice(0, 100),
+      lastFrom: user.uid,
+      lastAt: serverTimestamp(),
+      ["seen_" + user.uid]: serverTimestamp(),
+    }, { merge: true });
+    await batch.commit();
+  } catch (err) {
+    if (input.isConnected) input.value = text;
     toast(errMsg(err));
   }
 }
